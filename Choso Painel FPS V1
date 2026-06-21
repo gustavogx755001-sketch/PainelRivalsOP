@@ -1,0 +1,252 @@
+-- [[ CHOSO PANEL FPS V1 ]] --
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+-- Janela Principal
+local Window = Rayfield:CreateWindow({
+   Name = "Choso Panel Fps V1🥇",
+   LoadingTitle = "Carregando Choso Panel...",
+   LoadingSubtitle = "by ChosoDev & GeminiAi",
+   ConfigurationSaving = { Enabled = false },
+   KeySystem = false
+})
+
+-- Abas
+local EspTab = Window:CreateTab("Esp", nil)
+local AimbotTab = Window:CreateTab("Aimbot", nil)
+local OthersTab = Window:CreateTab("Others", nil)
+
+-- Variáveis de controle
+local EspEnabled = false
+local AimbotEnabled = false
+local FovRadius = 100 
+
+-- NOVA VARIÁVEL: Armazena o alvo atual para dar persistência ("Grudência")
+local CurrentAimbotTarget = nil 
+
+-- [[ CRIAÇÃO DA MIRA DO FOV ]] --
+local FovGui = Instance.new("ScreenGui")
+FovGui.Name = "ChosoFovGui"
+FovGui.ResetOnSpawn = false
+FovGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local FovCircle = Instance.new("Frame")
+FovCircle.Name = "FovCircle"
+FovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FovCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+FovCircle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+FovCircle.BackgroundTransparency = 1
+FovCircle.Size = UDim2.new(0, FovRadius * 2, 0, FovRadius * 2)
+FovCircle.Visible = false
+FovCircle.Parent = FovGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(1, 0)
+UICorner.Parent = FovCircle
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(255, 0, 0) 
+UIStroke.Thickness = 1.5
+UIStroke.Parent = FovCircle
+
+
+-- [[ LÓGICA DO ESP GLOBAL (WALLHACK) ]] --
+local function limparEspDoPersonagem(char)
+    if char:FindFirstChild("ChosoHighlight") then char.ChosoHighlight:Destroy() end
+    if char:FindFirstChild("ChosoEspName") then char.ChosoEspName:Destroy() end
+end
+
+local function aplicarEspNoPersonagem(char, player)
+    limparEspDoPersonagem(char)
+    if not EspEnabled then return end
+    
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "ChosoHighlight"
+    highlight.FillColor = Color3.fromRGB(255, 0, 0)
+    highlight.FillTransparency = 0.6
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop 
+    highlight.Parent = char
+
+    local bgui = Instance.new("BillboardGui")
+    bgui.Name = "ChosoEspName"
+    bgui.Size = UDim2.new(0, 150, 0, 30)
+    bgui.AlwaysOnTop = true
+    bgui.StudsOffset = Vector3.new(0, -3.8, 0) 
+    bgui.Parent = char
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = player.Name
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextSize = 13
+    label.Font = Enum.Font.SourceSansBold
+    label.TextStrokeTransparency = 0 
+    label.Parent = bgui
+end
+
+local function atualizarESP()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            if EspEnabled then
+                aplicarEspNoPersonagem(player.Character, player)
+            else
+                limparEspDoPersonagem(player.Character)
+            end
+        end
+    end
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(char)
+        task.wait(0.5)
+        if EspEnabled then aplicarEspNoPersonagem(char, player) end
+    end)
+end)
+
+for _, p in ipairs(Players:GetPlayers()) do
+    if p ~= LocalPlayer then
+        p.CharacterAdded:Connect(function(char)
+            task.wait(0.5)
+            if EspEnabled then aplicarEspNoPersonagem(char, p) end
+        end)
+    end
+end
+
+
+-- [[ LÓGICA DO AIMBOT ULTRA PRECISO COM GRUDÊNCIA ]] --
+
+-- Função auxiliar para verificar se um jogador específico ainda é um alvo válido no FOV
+local function verificarSeAlvoContinuaValido(player)
+    if player and player.Character and player.Character:FindFirstChild("Head") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+        -- Verifica time
+        if LocalPlayer.Team ~= nil and player.Team == LocalPlayer.Team then return false end
+        
+        -- Verifica se está na tela
+        local head = player.Character.Head
+        local screenPos, noVisor = Camera:WorldToViewportPoint(head.Position)
+        
+        if noVisor then
+            -- Verifica se ainda está dentro do círculo do FOV
+            local posicaoDoMouse = UserInputService:GetMouseLocation()
+            local distanciaXy = (Vector2.new(screenPos.X, screenPos.Y) - posicaoDoMouse).Magnitude
+            
+            if distanciaXy <= FovRadius then
+                return true -- Continua válido, mantém o lock
+            end
+        end
+    end
+    return false -- Ficou inválido (morreu, saiu do time ou saiu do FOV)
+end
+
+-- Função antiga de procura, usada apenas quando não temos alvo persistente
+local function procurarMelhorNovoAlvo()
+    local jogadorMaisProximo = nil
+    local menorDistanciaXy = math.huge
+    local posicaoDoMouse = UserInputService:GetMouseLocation()
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+            if LocalPlayer.Team == nil or player.Team ~= LocalPlayer.Team then
+                local head = player.Character.Head
+                local screenPos, noVisor = Camera:WorldToViewportPoint(head.Position)
+                
+                if noVisor then
+                    local distanciaXy = (Vector2.new(screenPos.X, screenPos.Y) - posicaoDoMouse).Magnitude
+                    if distanciaXy < menorDistanciaXy and distanciaXy <= FovRadius then
+                        menorDistanciaXy = distanciaXy
+                        jogadorMaisProximo = player
+                    end
+                end
+            end
+        end
+    end
+    return jogadorMaisProximo
+end
+
+-- Função principal de trava (RenderStep de Alta Prioridade)
+local function loopDoAimbot()
+    if not AimbotEnabled then return end
+
+    -- 1. Tentamos manter a grudência no alvo atual
+    if CurrentAimbotTarget then
+        if verificarSeAlvoContinuaValido(CurrentAimbotTarget) then
+            -- O alvo ainda está lá e no FOV, ignora o resto e foca nele
+            Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, CurrentAimbotTarget.Character.Head.Position)
+            return -- ENCERRA O LOOP AQUI, NÃO PROCURA OUTRO
+        else
+            -- Perdeu o alvo (morreu ou saiu do FOV)
+            CurrentAimbotTarget = nil
+        end
+    end
+
+    -- 2. Se não temos alvo travado, procuramos o melhor novo alvo
+    local novoAlvo = procurarMelhorNovoAlvo()
+    if novoAlvo then
+        CurrentAimbotTarget = novoAlvo -- Registra ele como alvo persistente
+        Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, novoAlvo.Character.Head.Position)
+    end
+end
+
+
+-- [[ INTERFACE - CONFIGURAÇÃO DOS COMTROLES ]] --
+
+-- Aba ESP
+EspTab:CreateToggle({
+   Name = "Ativar Wallhack ESP",
+   CurrentValue = false,
+   Callback = function(Value)
+      EspEnabled = Value
+      atualizarESP()
+   end,
+})
+
+-- Aba Aimbot
+AimbotTab:CreateToggle({
+   Name = "Ativar Aimbot",
+   CurrentValue = false,
+   Callback = function(Value)
+      AimbotEnabled = Value
+      FovCircle.Visible = Value 
+      
+      -- Limpa o alvo atual ao desligar
+      if not Value then
+          CurrentAimbotTarget = nil
+          RunService:UnbindFromRenderStep("ChosoAimbotLock")
+      else
+          -- Bind de alta prioridade para ultra precisão sem engasgos
+          RunService:BindToRenderStep("ChosoAimbotLock", Enum.RenderPriority.Camera.Value + 1, loopDoAimbot)
+      end
+   end,
+})
+
+AimbotTab:CreateSlider({
+   Name = "Fov",
+   Range = {10, 700},
+   Increment = 5,
+   Suffix = " Raio",
+   CurrentValue = 100,
+   Callback = function(Value)
+      FovRadius = Value
+      FovCircle.Size = UDim2.new(0, Value * 2, 0, Value * 2)
+   end,
+})
+
+-- Aba Outros
+OthersTab:CreateParagraph({
+    Title = "Créditos do Painel", 
+    Content = "Credits: GeminiAi, ChosoDev"
+})
+
+Rayfield:Notify({
+   Title = "Choso Panel - Fix Aplicado!",
+   Content = "Aimbot agora possui 'Grudência' (Stickiness) no alvo.",
+   Duration = 5,
+   Image = 4483362458,
+})
